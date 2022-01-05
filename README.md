@@ -1,5 +1,4 @@
 # Technical-Test-Interconnect-Data
-# Technical-Test-Interconnect-Data 
 ## Conclution  
 #### What we Get ?   
 
