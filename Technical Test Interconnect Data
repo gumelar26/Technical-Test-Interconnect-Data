@@ -1,0 +1,252 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+customer = pd.read_csv('olist_customers_dataset.csv')
+geolocation = pd.read_csv('olist_geolocation_dataset.csv')
+order_item = pd.read_csv('olist_order_items_dataset.csv')
+order_payment = pd.read_csv('olist_order_payments_dataset.csv')
+order_review = pd.read_csv('olist_order_reviews_dataset.csv')
+order = pd.read_csv('olist_orders_dataset.csv')
+product = pd.read_csv('olist_products_dataset.csv')
+seller = pd.read_csv ('olist_sellers_dataset.csv')
+product_category = pd.read_csv('product_category_name_translation.csv')
+
+# ================= Total Revenue and Market Trend ================== #
+ 
+# =========== Preprocessing ============ #
+
+# --- Manage order_item dataset --- #
+print(order_item.head())
+print(order_item.info())
+
+# change type data object to datetime
+order_item['shipping_limit_date'] = pd.to_datetime(order_item['shipping_limit_date'])
+
+# checking missing value
+order_item.isna().sum()
+
+# create total_value column
+order_item['total_value'] = order_item['price'] + order_item['freight_value']
+
+
+# --- Manage order dataset --- #
+print(order.head())
+print(order.info())
+
+# change some type data object to datetime
+order['order_purchase_timestamp'] = pd.to_datetime(order['order_purchase_timestamp'])
+order['order_approved_at'] = pd.to_datetime(order['order_approved_at'])
+order['order_delivered_carrier_date'] = pd.to_datetime(order['order_delivered_carrier_date'])
+order['order_delivered_customer_date'] = pd.to_datetime(order['order_delivered_customer_date'])
+order['order_estimated_delivery_date'] = pd.to_datetime(order['order_estimated_delivery_date'])
+
+# checking missing value
+order.isna().sum()
+
+# handling with missing value
+
+# step 1: find the average between purchase_time (no any missing value) with delivered_carrier
+order_1 =order[order['order_delivered_carrier_date'].notnull()]
+miss_carrier =(order_1['order_purchase_timestamp']-order_1['order_delivered_carrier_date']).mean()
+miss_carrier
+
+# step 2: find the missing value column (order_delivered_carrire_date) and subtract the average we have count before 
+added_date = order[order['order_delivered_carrier_date'].isnull()]['order_purchase_timestamp'] - miss_carrier
+added_date
+
+# step 3: add the value we have got to the missing value
+order['order_delivered_carrier_date']=order['order_delivered_carrier_date'].fillna(added_date)
+order.isnull().sum()
+
+# do the same way to the other missing value
+order_2 =order[order['order_approved_at'].notnull()]
+miss_carrier =(order_2['order_purchase_timestamp']-order_2['order_approved_at']).mean()
+miss_carrier
+added_date = order[order['order_approved_at'].isnull()]['order_purchase_timestamp'] - miss_carrier
+added_date
+order['order_approved_at']=order['order_approved_at'].fillna(added_date)
+order.isnull().sum()
+
+# same
+order_3 =order[order['order_delivered_customer_date'].notnull()]
+miss_carrier =(order_3['order_purchase_timestamp']-order_3['order_delivered_customer_date']).mean()
+miss_carrier
+added_date = order[order['order_delivered_customer_date'].isnull()]['order_purchase_timestamp'] - miss_carrier
+added_date
+order['order_delivered_customer_date']=order['order_delivered_customer_date'].fillna(added_date)
+order.isnull().sum()
+
+# --- Merge order_item dataset and order dataset --- #
+print(order_item.shape)
+print(order.shape)
+
+df = pd.merge(order_item, order, on = 'order_id', how = 'inner')
+df.sample(5)
+
+# =========== Analysis ============ #
+
+# --- Total revenue --- #
+# assuming that revenue is all transaction (order) that's has delivered status, so we can get total revenue by
+revenue = df[df['order_status'] == 'delivered']
+sum(revenue['total_value'])
+
+# --- Total revenue per month in every year --- #
+# we also can see the trend of total revenue per month in every year
+revenue['year_month'] = revenue['order_delivered_customer_date'].dt.strftime("%Y-%m")
+revenue_year_month = revenue.groupby(['year_month'])['total_value'].sum().reset_index()
+revenue_year_month
+
+# visualization
+plt.style.use('seaborn')
+revenue_year_month.plot(x='year_month', y='total_value', kind='bar', title = 'total revenue per month in every year')
+
+#for i, g in enumerate(revenue_year_month['total_value']) :
+#    plt.text(i, g, f'{g}', ha='center', fontsize=8)
+
+plt.xlabel('Year - Month')
+plt.ylabel('Revenue')
+plt.tight_layout()
+plt.show()
+
+# --- Total revenue per year --- #
+# or we can see total trend total revenue in every year
+revenue['year'] = revenue['order_delivered_customer_date'].dt.year
+revenue_year = revenue.groupby(['year'])['total_value'].sum().reset_index()
+revenue_year
+
+# visualization
+plt.style.use('seaborn')
+revenue_year.plot(x='year', y='total_value', kind='bar', title = 'total revenue per year')
+
+#for i, g in enumerate(revenue_year['total_value']) :
+#    plt.text(i, g, f'{g}', ha='center', fontsize=15)
+
+plt.xlabel('Year')
+plt.ylabel('Revenue')
+plt.tight_layout()
+plt.show()
+
+# --- Potion of price and freight_value in revenue --- #
+# portion of price and freight_value in revenue
+revenue['year_month'] = revenue['order_delivered_customer_date'].dt.strftime("%Y-%m")
+value_diff1 =revenue.groupby(['year_month'])['price','freight_value'].sum().reset_index().sort_values(by='year_month',ascending=True)
+value_diff1
+
+# --- Potion of price and freight value in revenue in year --- #
+# in year
+revenue['year'] = revenue['order_delivered_customer_date'].dt.strftime("%Y")
+value_diff =revenue.groupby(['year'])['price','freight_value'].sum().reset_index()
+value_diff
+
+# --- Top 10 seller with the highest revenue --- #
+seller_revenue = revenue.groupby(['seller_id'])['total_value'].sum().reset_index().sort_values(by='total_value',ascending=False)
+seller_revenue.head(10)
+
+# --- Top 10 customers with the most purchases --- #
+# Top 10 customers with the most purchases
+customer_revenue = revenue.groupby(['customer_id'])['total_value'].sum().reset_index().sort_values(by='total_value',ascending=False)
+customer_revenue.head(10)
+
+# --- Transaction distribution in every order_status --- #
+# transaction distribution in every order_status 
+df_status = df.groupby(['order_status'])['order_id'].count().reset_index().sort_values(by='order_id',ascending=False)
+df_status.columns = ['order_status', 'count_total']
+df_status
+
+
+# ================= User Demographic ================== #
+ 
+# =========== Preprocessing ============ #
+
+print(customer.head())
+print(customer.info())
+
+# checking missing value
+customer.isna().sum()
+
+# =========== Analysis ============ #
+
+# --- User distribution in every state --- #
+# customer distribution in every state
+customer_state = customer.groupby(['customer_state'])['customer_id'].count().sort_values(ascending=False).reset_index()
+customer_state.columns = ['customer_state', 'count_total']
+customer_state
+
+# visualization
+plt.style.use('seaborn')
+customer_state.plot(x='customer_state', y='count_total', kind='bar', title = 'user distribution in every state')
+
+#for i, g in enumerate(customer_state['customer_id']) :
+#    plt.text(i, g, f'{g}', ha='center', fontsize=10)
+
+plt.xlabel('State')
+plt.ylabel('Count Total')
+plt.tight_layout()
+plt.show()
+
+
+# --- Top 10 city with the highest user --- #
+# Top 10 city with the highest user
+customer_city = customer.groupby(['customer_city'])['customer_id'].count().sort_values(ascending=False).reset_index()
+customer_city.columns = ['customer_city', 'count_total']
+customer_city.head(10)
+
+
+
+# ================= Another Insight ================== #
+
+
+
+# --- Top 10 category product with the highest revenue --- #
+
+# === Processing === #
+print(df.shape)
+print(product.shape)
+
+product.isna().sum()
+
+print(f'Persentase missing value pada data : {round((610/32951)*100)}%' )
+
+# because of missing value only 2% so we decide to drop them
+product = product.dropna()
+
+product.isna().sum()
+
+df_1 = pd.merge(df, product, on = 'product_id', how = 'inner')
+df_1.sample(5)
+
+print(df_1.shape)
+
+
+# === Analysis === #
+df_1_product = df_1.groupby(['product_category_name'])['total_value'].sum().sort_values(ascending=False).reset_index()
+df_1_product.head(10)
+
+
+
+# ---  Most preferred payment type --- #
+print(order_payment.head())
+print(order_payment.info())
+
+order_payment.isna().sum()
+df_2 = pd.merge(order, order_payment, on = 'order_id', how = 'inner')
+
+# create year column
+df_2['year'] = df_2['order_delivered_customer_date'].dt.strftime("%Y")
+
+payment_type = df_2.groupby(['payment_type']).size().sort_values(ascending=False).reset_index()
+payment_type.columns = ['payment_type','count_total']
+payment_type
+
+
+# ---  Most preferred payment type trend in every year --- #
+payment_type_year = df_2.groupby(['year','payment_type']).size().reset_index().sort_values(by='year',ascending=True)
+payment_type_year.columns = ['year','payment_type','count_total']
+payment_type_year
+
+plt.clf()
+sns.pointplot(data=payment_type_year, x='year', y='count_total', hue='payment_type')
+plt.tight_layout()
+plt.show()
